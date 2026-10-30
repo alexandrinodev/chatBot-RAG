@@ -16,9 +16,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_google_genai._common import GoogleGenerativeAIError
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from guardrails import GuardrailError, MAX_PERGUNTA, validar_pergunta
+from rag import criar_chain_segura
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -83,31 +82,16 @@ except GoogleGenerativeAIError as erro:
     st.stop()
 
 def criar_chain_agente(banco_vetores):
-    
-    prompt_template = ChatPromptTemplate.from_template("""Você é um assistente de RH que responde perguntas sobre politicas internas da empresa.
-    Use apenas as informacoes do contexto abaixo para responder.
-    Se nao encotrar as resposta, diga claramente que nao sabe responder.
-    Responda em portugues do Brasil de forma clara e objetiva.
-    
-    Contexto: {context}
-    A pergunta: {question}
-    Resposta: """)
-    
-    retriever = banco_vetores.as_retriever()
-    
     llm = ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL") or "gemini-3.8-flash",
+        temperature=0,
+        max_output_tokens=1500,
     )
-    
-    chain = (
-                {"context": retriever, "question": RunnablePassthrough()} 
-                | prompt_template 
-                | llm 
-                | StrOutputParser()
-            )
-    
-    return chain
-
+    segredos = tuple(
+        os.environ[nome] for nome in ("GOOGLE_API_KEY", "OPENAI_API_KEY")
+        if os.getenv(nome)
+    )
+    return criar_chain_segura(banco_vetores, llm, segredos)
 
 
 #interface
@@ -126,18 +110,26 @@ if "messages" not in st.session_state:
 # exibe as mensagens na tela
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+        st.text(msg["content"])
 
-prompt = st.chat_input("Pergunte sobre as políticas da empresa...")
+prompt = st.chat_input("Pergunte sobre as políticas da empresa...", max_chars=MAX_PERGUNTA)
 if prompt :
+    try:
+        prompt = validar_pergunta(prompt)
+    except GuardrailError as erro:
+        st.warning(str(erro))
+        st.stop()
     st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
-        st.write(prompt)
+        st.text(prompt)
 
     with st.chat_message("assistant"):
         with st.spinner("Buscando..."):
             try:
                 answer = chain.invoke(prompt)
+            except GuardrailError as erro:
+                st.warning(str(erro))
+                st.stop()
             except GoogleGenerativeAIError as erro:
                 if getattr(erro.__cause__, "code", None) != 429:
                     raise
@@ -146,6 +138,6 @@ if prompt :
                     "Aguarde pelo menos um minuto e envie sua pergunta novamente."
                 )
                 st.stop()
-            st.write(answer)
+            st.text(answer)
 
     st.session_state["messages"].append({"role": "assistant", "content": answer})
