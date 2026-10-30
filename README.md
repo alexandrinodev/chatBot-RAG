@@ -2,6 +2,9 @@
 
 Aplicação de perguntas e respostas sobre documentos de RH, construída com **Python, Streamlit, LangChain, Google Gemini e FAISS**. O projeto combina busca semântica em um PDF com geração de respostas em português e guardrails para reduzir riscos de prompt injection.
 
+<img width="1849" height="1048" alt="Screenshot from 2026-10-30 11-42-21" src="https://github.com/user-attachments/assets/e8204042-d7ba-47f0-b9f6-0cfd28081a69" />
+
+
 ## Visão geral
 
 Em vez de enviar o PDF inteiro ao modelo de conversa a cada pergunta, a aplicação recupera até quatro trechos relacionados à consulta. O Gemini recebe esses trechos como contexto e é instruído a responder com base no documento, citar as páginas disponíveis e reconhecer quando faltam informações.
